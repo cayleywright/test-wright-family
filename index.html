@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Wright Family Slideshow (Test)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+    #img, #vid { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #000; display: none; }
+    #caption { position: absolute; bottom: 50px; width: 100%; text-align: center; color: #fff; font-size: 16px; background: rgba(0,0,0,0.4); padding: 8px 12px; box-sizing: border-box; z-index: 5; }
+    #controls { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 10; }
+    #controls button { padding: 8px 14px; font-size: 18px; background: rgba(255,255,255,0.25); border: none; color: white; border-radius: 6px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <img id="img">
+  <video id="vid" playsinline></video>
+  <div id="caption"></div>
+  <div id="controls">
+    <button id="prev">&#9664;&#xFE0E;</button>
+    <button id="pause">&#9208;</button>
+    <button id="next">&#9654;&#xFE0E;</button>
+    <button id="sound">Mute</button>
+    <button id="videosOnly">Videos</button>
+  </div>
+  <script>
+    var img = document.getElementById('img');
+    var vid = document.getElementById('vid');
+    var captionEl = document.getElementById('caption');
+    var pauseBtn = document.getElementById('pause');
+
+    var allItems = [], items = [], index = 0, paused = false, timer = null, videoTimer = null, videosOnly = false;
+
+    function show() {
+      clearTimeout(timer);
+      clearTimeout(videoTimer);
+      var item = items[index];
+      var url = item.url || ('public/images/' + item.file);
+
+      var t = item.event || (item.file || '').replace(/\.[^/.]+$/, '');
+      if (item.time) {
+        var d = new Date(item.time);
+        if (t.indexOf(String(d.getFullYear())) === -1)
+          t += ' - ' + d.getFullYear();
+      }
+      captionEl.textContent = t;
+
+      if (item.media_type === 'video') {
+        img.style.display = 'none';
+        vid.src = url;
+        vid.style.display = 'block';
+        vid.play();
+        videoTimer = setTimeout(function() { if (!paused) advance(1); }, 30000);
+      } else {
+        vid.pause();
+        vid.style.display = 'none';
+        img.src = url;
+        img.style.display = 'block';
+        if (!paused) timer = setTimeout(function() { advance(1); }, 5000);
+      }
+    }
+
+    vid.onended = function() { clearTimeout(videoTimer); if (!paused) advance(1); };
+    vid.onerror = function() { clearTimeout(videoTimer); if (!paused) advance(1); };
+
+    function advance(n) {
+      index = (index + n + items.length) % items.length;
+      show();
+    }
+
+    pauseBtn.onclick = function() {
+      paused = !paused;
+      pauseBtn.textContent = paused ? '▶︎' : '⏸';
+      if (paused) {
+        clearTimeout(timer);
+        clearTimeout(videoTimer);
+        vid.pause();
+      } else {
+        if (vid.style.display === 'block') vid.play();
+        else timer = setTimeout(function() { advance(1); }, 5000);
+      }
+    };
+    document.getElementById('prev').onclick = function() { advance(-1); };
+    document.getElementById('next').onclick = function() { advance(1); };
+
+    var soundBtn = document.getElementById('sound');
+    soundBtn.onclick = function() {
+      vid.muted = !vid.muted;
+      soundBtn.textContent = vid.muted ? 'Sound' : 'Mute';
+    };
+
+    var videosBtn = document.getElementById('videosOnly');
+    videosBtn.onclick = function() {
+      videosOnly = !videosOnly;
+      videosBtn.textContent = videosOnly ? 'All' : 'Videos';
+      var filtered = videosOnly
+        ? allItems.filter(function(i) { return i.media_type === 'video'; })
+        : allItems;
+      if (!filtered.length) {
+        videosOnly = false;
+        videosBtn.textContent = 'Videos';
+        return;
+      }
+      items = filtered;
+      index = Math.floor(Math.random() * items.length);
+      show();
+    };
+
+    fetch('public/images/manifest.json')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        allItems = data;
+        items = data;
+        index = Math.floor(Math.random() * items.length);
+        show();
+      });
+  </script>
+</body>
+</html>
