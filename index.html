@@ -106,9 +106,19 @@
       }
     }
 
-    vids.forEach(function(v) {
-      v.onended = function() { clearTimeout(videoTimer); if (!paused) advance(1); };
-      v.onerror = function() { clearTimeout(videoTimer); if (!paused) advance(1); };
+    // Only the *active* video's end/error should advance. Otherwise a preload
+    // error on the inactive slot would skip the current item.
+    vids.forEach(function(v, i) {
+      v.onended = function() {
+        if (i !== activeVid) return;
+        clearTimeout(videoTimer);
+        if (!paused) advance(1);
+      };
+      v.onerror = function() {
+        if (i !== activeVid) return;
+        clearTimeout(videoTimer);
+        if (!paused) advance(1);
+      };
     });
 
     function advance(n) {
