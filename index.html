@@ -50,7 +50,10 @@
         vid.src = url;
         vid.style.display = 'block';
         vid.play();
-        videoTimer = setTimeout(function() { if (!paused) advance(1); }, 30000);
+        // If duration_secs is set on the item (e.g. older clips), cap playback there;
+        // otherwise let the video play to its natural end (60s hard safety net).
+        var cap = item.duration_secs ? item.duration_secs * 1000 : 60000;
+        videoTimer = setTimeout(function() { if (!paused) advance(1); }, cap);
       } else {
         vid.pause();
         vid.style.display = 'none';
