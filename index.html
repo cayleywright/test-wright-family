@@ -38,9 +38,12 @@
     <button id="videosOnly">Videos</button>
   </div>
   <script>
-    // Double-buffered media: two <img> and two <video> elements rotate so the
-    // next item is preloaded into the inactive element while the current one
-    // plays. Hugely reduces transition stutter for videos.
+    // Double-buffered images: two <img> elements rotate so the next image is
+    // decoded into the inactive element while the current one is on screen.
+    // Videos are NOT pre-downloaded: two large video files downloading at once
+    // (current + next) splits the bandwidth, so the playing one stalls a few
+    // seconds in and the next one never finishes loading. A video is loaded
+    // only when it becomes the active item, so at most one downloads at a time.
     var imgs = [document.getElementById('img'), document.getElementById('imgB')];
     var vids = [document.getElementById('vidA'), document.getElementById('vidB')];
     var activeImg = 0, activeVid = 0;
@@ -115,11 +118,11 @@
     function preloadNext() {
       if (!items.length) return;
       var nxt = items[(index + 1) % items.length];
-      var nUrl = urlFor(nxt);
-      if (nxt.media_type === 'video') {
-        loadInto(vids[1 - activeVid], nUrl, 'vid', 1 - activeVid);
-      } else {
-        loadInto(imgs[1 - activeImg], nUrl, 'img', 1 - activeImg);
+      // Only images are prefetched; see the note at the top about why videos
+      // aren't. (If the next item is a video, the inactive video slot is left
+      // alone so it isn't competing for bandwidth with the one now playing.)
+      if (nxt.media_type !== 'video') {
+        loadInto(imgs[1 - activeImg], urlFor(nxt), 'img', 1 - activeImg);
       }
     }
 
