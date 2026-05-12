@@ -7,18 +7,6 @@
   <style>
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
     #img, #imgB, #vidA, #vidB { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; background: #000; display: none; }
-    /* Compensate for videos with rotation metadata that browsers ignore. */
-    .vid-rot-90, .vid-rot-270 {
-      /* Swap layout dimensions so post-rotation visual size matches the viewport. */
-      width: 100vh !important;
-      height: 100vw !important;
-      top: 50% !important;
-      left: 50% !important;
-      transform-origin: center center;
-    }
-    .vid-rot-90  { transform: translate(-50%, -50%) rotate(90deg); }
-    .vid-rot-180 { transform: rotate(180deg); width: 100vw !important; height: 100vh !important; top: 0 !important; left: 0 !important; }
-    .vid-rot-270 { transform: translate(-50%, -50%) rotate(-90deg); }
     #caption { position: absolute; bottom: 50px; width: 100%; text-align: center; color: #fff; font-size: 16px; background: rgba(0,0,0,0.4); padding: 8px 12px; box-sizing: border-box; z-index: 5; }
     #controls { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 10; }
     #controls button { padding: 8px 14px; font-size: 18px; background: rgba(255,255,255,0.25); border: none; color: white; border-radius: 6px; cursor: pointer; }
@@ -34,13 +22,16 @@
     <button id="prev">&#9664;&#xFE0E;</button>
     <button id="pause">&#9208;</button>
     <button id="next">&#9654;&#xFE0E;</button>
-    <button id="sound">Mute</button>
+    <button id="sound">Sound</button>
     <button id="videosOnly">Videos</button>
   </div>
   <script>
-    // Double-buffered media: two <img> and two <video> elements rotate so the
-    // next item is preloaded into the inactive element while the current one
-    // plays. Hugely reduces transition stutter for videos.
+    // Double-buffered images: two <img> elements rotate so the next image is
+    // decoded into the inactive element while the current one is on screen.
+    // Videos are NOT pre-downloaded: two large video files downloading at once
+    // (current + next) splits the bandwidth, so the playing one stalls a few
+    // seconds in and the next one never finishes loading. A video is loaded
+    // only when it becomes the active item, so at most one downloads at a time.
     var imgs = [document.getElementById('img'), document.getElementById('imgB')];
     var vids = [document.getElementById('vidA'), document.getElementById('vidB')];
     var activeImg = 0, activeVid = 0;
@@ -50,7 +41,10 @@
     var pauseBtn = document.getElementById('pause');
 
     var allItems = [], items = [], index = 0, paused = false;
-    var timer = null, videoTimer = null, videosOnly = false, muted = false;
+    // Start muted: browsers (especially mobile) refuse to autoplay video with
+    // sound, so an unmuted slideshow video never starts and gets skipped. The
+    // "Sound" button unmutes — that tap is the user gesture browsers require.
+    var timer = null, videoTimer = null, videosOnly = false, muted = true;
 
     function urlFor(item) { return item.url || ('public/images/' + item.file); }
 
@@ -88,12 +82,13 @@
       if (item.media_type === 'video') {
         imgs.forEach(function(im) { im.style.display = 'none'; });
         var slot = pickSlot('vid', url, activeVid);
+        // If this slot previously errored (e.g. a failed preload), force a fresh
+        // load instead of trusting the cached URL.
+        if (vids[slot].error) preloaded.vid[slot] = null;
         loadInto(vids[slot], url, 'vid', slot);
         activeVid = slot;
-        // Apply rotation class for videos whose metadata browsers ignore.
-        vids[slot].className = item.rotation ? ('vid-rot-' + item.rotation) : '';
         vids.forEach(function(v, i) {
-          if (i === slot) { v.style.display = 'block'; v.play(); }
+          if (i === slot) { v.style.display = 'block'; v.play().catch(function() {}); }
           else { v.pause(); v.style.display = 'none'; }
         });
         var cap = item.duration_secs ? item.duration_secs * 1000 : 60000;
@@ -112,11 +107,11 @@
     function preloadNext() {
       if (!items.length) return;
       var nxt = items[(index + 1) % items.length];
-      var nUrl = urlFor(nxt);
-      if (nxt.media_type === 'video') {
-        loadInto(vids[1 - activeVid], nUrl, 'vid', 1 - activeVid);
-      } else {
-        loadInto(imgs[1 - activeImg], nUrl, 'img', 1 - activeImg);
+      // Only images are prefetched; see the note at the top about why videos
+      // aren't. (If the next item is a video, the inactive video slot is left
+      // alone so it isn't competing for bandwidth with the one now playing.)
+      if (nxt.media_type !== 'video') {
+        loadInto(imgs[1 - activeImg], urlFor(nxt), 'img', 1 - activeImg);
       }
     }
 
@@ -129,6 +124,9 @@
         if (!paused) advance(1);
       };
       v.onerror = function() {
+        // A failed load leaves this element unusable; drop the cached URL so
+        // the next show() reloads it from scratch rather than reusing the dud.
+        preloaded.vid[i] = null;
         if (i !== activeVid) return;
         clearTimeout(videoTimer);
         if (!paused) advance(1);
@@ -148,7 +146,7 @@
         clearTimeout(videoTimer);
         vids[activeVid].pause();
       } else {
-        if (vids[activeVid].style.display === 'block') vids[activeVid].play();
+        if (vids[activeVid].style.display === 'block') vids[activeVid].play().catch(function() {});
         else timer = setTimeout(function() { advance(1); }, 5000);
       }
     };
