@@ -88,12 +88,15 @@
       if (item.media_type === 'video') {
         imgs.forEach(function(im) { im.style.display = 'none'; });
         var slot = pickSlot('vid', url, activeVid);
+        // If this slot previously errored (e.g. a failed preload), force a fresh
+        // load instead of trusting the cached URL.
+        if (vids[slot].error) preloaded.vid[slot] = null;
         loadInto(vids[slot], url, 'vid', slot);
         activeVid = slot;
         // Apply rotation class for videos whose metadata browsers ignore.
         vids[slot].className = item.rotation ? ('vid-rot-' + item.rotation) : '';
         vids.forEach(function(v, i) {
-          if (i === slot) { v.style.display = 'block'; v.play(); }
+          if (i === slot) { v.style.display = 'block'; v.play().catch(function() {}); }
           else { v.pause(); v.style.display = 'none'; }
         });
         var cap = item.duration_secs ? item.duration_secs * 1000 : 60000;
@@ -129,6 +132,9 @@
         if (!paused) advance(1);
       };
       v.onerror = function() {
+        // A failed load leaves this element unusable; drop the cached URL so
+        // the next show() reloads it from scratch rather than reusing the dud.
+        preloaded.vid[i] = null;
         if (i !== activeVid) return;
         clearTimeout(videoTimer);
         if (!paused) advance(1);
@@ -148,7 +154,7 @@
         clearTimeout(videoTimer);
         vids[activeVid].pause();
       } else {
-        if (vids[activeVid].style.display === 'block') vids[activeVid].play();
+        if (vids[activeVid].style.display === 'block') vids[activeVid].play().catch(function() {});
         else timer = setTimeout(function() { advance(1); }, 5000);
       }
     };
